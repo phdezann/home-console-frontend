@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2029
+
+set -e
+set -u
+
+service_name="screenwriter"
+
+echo "Restarting service..."
+ssh mosquito "sudo systemctl restart ${service_name}"
+echo "Tailing logs..."
+ssh mosquito "sudo journalctl -n 100 -f -u ${service_name}"
