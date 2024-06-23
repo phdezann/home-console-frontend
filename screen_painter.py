@@ -1,3 +1,4 @@
+import logging
 import threading
 
 from luma.core.interface.serial import i2c
@@ -9,6 +10,7 @@ CATERPILLAR_SIZE = 6
 
 class ScreenPainter:
     def __init__(self):
+        self.active = True
         serial = i2c(port=1, address=0x3C)
         self.device = sh1106(serial)
         self.screen_lock = threading.Lock()
@@ -16,6 +18,14 @@ class ScreenPainter:
         self.caterpillar_active_flag = False
         self.start_caterpillar_drawing_thread()
         self.draw_text(":P")
+
+    def is_active(self):
+        return self.active
+
+    def close(self, err_msg):
+        if self.active:
+            logging.warning(f"ScreenPainter closed due to '{err_msg}'")
+            self.active = False
 
     def draw_text(self, text):
         self.stop_caterpillar()
@@ -57,7 +67,7 @@ class ScreenPainter:
             for x_to_left in range(CATERPILLAR_SIZE - 2, 0, -1):
                 update_text(x_to_left)
 
-        while True:
+        while self.active:
             draw_return_trip(draw_text_in_box)
 
     def start_caterpillar_drawing_thread(self):

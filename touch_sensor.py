@@ -1,10 +1,12 @@
+import json
 import logging
 import threading
+import traceback
 from datetime import datetime
 
 import RPi.GPIO as GPIO
 
-from bus.msg_enum import MsgEnum
+from msg_enum import MsgEnum
 
 MINIMUM_INTERVAL_BETWEEN_TOUCH = 200
 
@@ -15,15 +17,15 @@ class TouchSensor:
         self.weatherman_inbox_pub = weatherman_inbox_pub
         self.screen_painter = screen_painter
         self.last_touched = None
+        self.active = True
 
-        if self.args.simulate_touch:
-            self.start_simulation_thread()
-            return
+    def is_active(self):
+        return self.active
 
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.args.touch_switch_gpio, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-        GPIO.add_event_detect(self.args.touch_switch_gpio, GPIO.RISING, self.event_detected, 50)
+    def close(self, err_msg):
+        if self.active:
+            logging.warning(f"TouchSensor closed due to '{err_msg}'")
+            self.active = False
 
     def start_simulation(self):
         while True:
@@ -36,6 +38,19 @@ class TouchSensor:
         thread.start()
         return thread
 
+    def start_detection(self):
+        if self.args.simulate_touch:
+            self.start_simulation_thread()
+        else:
+            try:
+                GPIO.setwarnings(False)
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(self.args.touch_switch_gpio, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                GPIO.add_event_detect(self.args.touch_switch_gpio, GPIO.RISING, self.event_detected, 50)
+            except Exception as _:
+                logging.error(traceback.format_exc())
+                self.active = False
+
     def event_detected(self, _):
         now = datetime.now()
         if GPIO.input(self.args.touch_switch_gpio) == 1:
@@ -47,8 +62,13 @@ class TouchSensor:
     def send_msg(self, now):
         if self.last_touch_old_enough(now, MINIMUM_INTERVAL_BETWEEN_TOUCH):
             self.last_touched = now
-            self.weatherman_inbox_pub.write(MsgEnum.SENSOR_TOUCHED, self.last_touched.isoformat())
+            self.__publish(MsgEnum.SENSOR_TOUCHED, self.last_touched.isoformat())
             self.screen_painter.start_caterpillar()
+
+    def __publish(self, event, payload=None):
+        creation = datetime.now().isoformat()
+        json_message = json.dumps({'event': event.name, 'payload': payload, 'creation': creation})
+        self.weatherman_inbox_pub.publish(json_message)
 
     def last_touch_old_enough(self, now, window_size_in_millis):
         if not self.last_touched:
