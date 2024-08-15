@@ -4,7 +4,7 @@
 set -e
 set -u
 
-service_name="screenwriter"
+service_name="home-console"
 
 echo "Restarting service..."
 ssh mosquito "sudo systemctl restart ${service_name}"
